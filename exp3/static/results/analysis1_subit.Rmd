@@ -1,0 +1,76 @@
+
+
+---
+output:
+  html_document: default
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=5, fig.height=5,fig.align = "center",cache=TRUE)
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+##libraries, globals
+
+library(ggplot2)
+library(reshape)
+library(grid)
+library(dplyr)
+library(gridExtra)
+library(lme4)
+library(summarytools)
+library(MuMIn)
+library(stargazer)
+
+paper_theme <- theme_light()
+
+
+```
+
+
+```{r}
+data <- read.csv('data.csv')
+
+data <- data %>%
+        mutate(corr = (n_shown == n_guess)*1) %>%
+        mutate(high_jitter = jitter > 20) 
+
+
+
+```
+
+```{r}
+p.1 <- ggplot(data=data, aes(x=n_shown, y=n_guess)) +
+        geom_jitter(width=0.1,height=0.1, alpha=0.9) +
+        paper_theme + facet_wrap(~exp_duration, nrow=3)
+
+
+
+ggplot(data=data, aes(x=jitter, y=corr)) +
+        stat_summary(fun.data="mean_se")+
+      paper_theme
+
+
+ggplot(data=data, aes(x=jitter, y=rt)) +
+        stat_summary(fun.data="mean_se") +
+      paper_theme
+
+
+ggplot(data=data, aes(x=n_shown, y=rt, group=jitter)) +
+        stat_summary(fun.data="mean_se",
+                         aes(color=jitter)) +
+      paper_theme
+
+ggplot(data=data, aes(x=n_shown, y=corr, group=high_jitter)) +
+               stat_summary(fun.data="mean_se", 
+                                aes(color=high_jitter)) +
+      paper_theme
+
+
+
+
+```

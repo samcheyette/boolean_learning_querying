@@ -1,0 +1,167 @@
+---
+output:
+  html_document: default
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=5, fig.height=5,fig.align = "center",cache=TRUE)
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+##libraries, globals
+
+library(ggplot2)
+library(reshape)
+library(grid)
+library(dplyr)
+#library(gridExtra)
+library(lme4)
+#library(summarytools)
+#library(MuMIn)
+#library(stargazer)
+library(reghelper)
+
+paper_theme <- theme(
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(), 
+  panel.background = element_blank(),
+  axis.title.x = element_text(size=18),
+  axis.text.x=element_text(colour="black", 
+                           size = 14), 
+  axis.title.y = element_text(size = 18, vjust = 1),
+  axis.text.y  = element_text(size = 14),
+  axis.line.x = element_line(colour = "black"), 
+  axis.line.y = element_line(colour = "black"),
+  legend.text=element_text(size=16),
+  strip.text=element_blank(),
+          strip.background = element_blank())
+
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), ...)
+}
+
+
+
+```
+
+
+```{r}
+
+
+data <- read.csv("data.csv")
+
+data$id <- seq.int(1,nrow(data))
+
+
+
+data <- data %>%
+        mutate(human_pred = (1-obj_category) * (1-correct_guess) + 
+                 (correct_guess * obj_category)) %>%
+        mutate(model_correct = 1 - abs(model_pred - obj_category)) %>%
+        group_by(incr) %>%
+        mutate(n_correct = cumsum(correct_guess))
+
+data$average_cplx_bin <-  cut_number(data$condition,3)
+data$cplx_bin <- cut_number(data$cplx, 3)
+#data$average_cplx_sofar <-  cut(data$mean_cplx_sofar,3)
+#data$entropy_bin <-  cut(data$entropy,3)
+
+data.last <- data %>%
+          group_by(incr) %>%
+          top_n(n=1, wt=id)
+
+
+
+
+```
+
+
+```{r}
+ggplot(data=data, aes(x=cplx_bin, y=correct_guess, group=cplx_bin,color=cplx_bin))+
+      stat_summary()
+
+ggplot(data=data.last, aes(x=average_cplx_bin, y=n_correct))+
+      stat_summary()
+
+ggplot(data=data, aes(x=cut(n_query, 4), y=correct_guess, group=cplx_bin,color=cplx_bin))+
+      stat_summary(fun.y="mean", geom="point", size=2) +
+      stat_summary(fun.y="mean", geom="line", size=2)
+
+ggplot(data=data, aes(x=cut_number(cplx,4), y=correct_guess, group=average_cplx_bin,color=average_cplx_bin))+
+      stat_summary(fun.y="mean", geom="point", size=2) +
+      stat_summary(fun.y="mean", geom="line", size=2) +
+      stat_summary(fun.data="mean_se", geom="errorbar", size=2) 
+
+ggplot(data=data, aes(x=n_query, y=model_correct))+
+  stat_summary() 
+      #geom_point() # +
+  #    facet_wrap(~categories)
+    #stat_summary()
+
+
+ggplot(data=data, aes(x=round(model_correct,1), y=correct_guess))+
+  stat_summary() 
+
+
+
+data <- data %>%
+        group_by(n_query) %>%
+        mutate(query_ent_bin = entropy > median(entropy))
+
+ggplot(data=data, aes(x=cut(n_query,3), y=correct_guess, color=cut(entropy,3)))+
+    stat_summary() 
+
+
+ggplot(data=data, aes(x=round(model_pred,1), y=human_pred))+
+  stat_summary() 
+
+
+
+summary(glm(data=data, correct_guess ~ score + n_query, family=binomial()))
+summary(glm(data=data, correct_guess ~ entropy, family=binomial()))
+
+
+
+
+summary(lm(data=data, entropy ~ cplx * n_query))
+
+summary(glm(data=data, correct_guess ~ cplx, family=binomial()))
+
+summary(glm(data=data, correct_guess ~  I(entropy)+ I(entropy**2) + n_query, family=binomial()))
+
+beta(glm(data=data, correct_guess ~ n_query + model_correct, family=binomial()))
+beta(glm(data=data, human_pred ~ model_pred + obj_category, family=binomial()))
+beta(glm(data=data, human_pred ~ model_pred - 1, family=binomial()))
+
+summary(glm(data=data, correct_guess ~ poly(cplx,4), family=binomial()))
+ggplot(data=data, aes(x=n_query, y=correct_guess,color=cut(cplx,4))) +
+     binomial_smooth(se=FALSE)
+
+ggplot(data=data, aes(x=n_query, y=model_correct,color=cut(cplx,4))) +
+     binomial_smooth(se=FALSE)
+
+
+
+ggplot(data=data, aes(x=reorder(categories, correct_guess, function(x) -mean(x)), y=correct_guess, color=cplx)) +
+      stat_summary() +
+        theme(axis.text.x=element_text(angle=90)) +
+      paper_theme + xlab("Categories")
+ 
+
+ggsave("figs/learning.pdf", width=10,height=6)
+```
+
+```{r,fig.width=7,fig.height=4}
+
+ggplot(data=data.last, aes(x=cplx, y=n_query)) +
+         
+      geom_point() + stat_smooth(method="lm") +
+      paper_theme
+      
+      
+```

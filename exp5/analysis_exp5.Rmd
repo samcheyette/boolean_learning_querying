@@ -1,0 +1,110 @@
+---
+output:
+  html_document: default
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=5, fig.height=5,fig.align = "center",cache=TRUE)
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+##libraries, globals
+
+library(ggplot2)
+library(reshape)
+library(grid)
+library(dplyr)
+#library(gridExtra)
+library(lme4)
+#library(summarytools)
+#library(MuMIn)
+#library(stargazer)
+library(reghelper)
+
+paper_theme <- theme(
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(), 
+  panel.background = element_blank(),
+  axis.title.x = element_text(size=18),
+  axis.text.x=element_text(colour="black", 
+                           size = 14), 
+  axis.title.y = element_text(size = 18, vjust = 1),
+  axis.text.y  = element_text(size = 14),
+  axis.line.x = element_line(colour = "black"), 
+  axis.line.y = element_line(colour = "black"),
+  legend.text=element_text(size=16),
+  strip.text=element_blank(),
+          strip.background = element_blank())
+
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), ...)
+}
+
+
+
+```
+
+
+```{r}
+
+
+data <- read.csv("data.csv")
+
+data$id <- seq.int(1,nrow(data))
+
+
+
+data <- data %>%
+        mutate(human_pred = (1-obj_category) * (1-correct_guess) + 
+                 (correct_guess * obj_category))# %>%
+       # mutate(model_correct = 1 - abs(model_pred - obj_category))
+
+
+
+data$average_cplx_bin <-  cut_number(data$condition,3)
+data$cplx_bin <- cut_number(data$cplx, 3)
+#data$average_cplx_sofar <-  cut(data$mean_cplx_sofar,3)
+#data$entropy_bin <-  cut(data$entropy,3)
+
+data.last <- data %>%
+          group_by(incr) %>%
+          top_n(n=1, wt=id)
+
+
+
+data.guessing <- data %>%
+          filter(trial_phase == "guessing")
+
+
+
+
+
+```
+
+
+
+```{r}
+
+ggplot(data=data.guessing, aes(x=tot_query, y=correct_guess, group=cplx_bin,color=cplx_bin)) +
+        stat_summary(fun.y="mean", geom="line") 
+
+```
+```{r,fig.width=5.5,fig.height=4}
+df9 <- data.frame(xs=seq.int(0.1,15,0.1))
+df9$probability <- dgamma(df9$xs,shape=3,scale=1.2)
+
+ggplot(data=df9, aes(x=xs,y=probability)) +
+      geom_line() +
+      paper_theme +
+      xlab("Boolean complexity") +
+      ylab("Probability density")
+
+df9$probability <- df9$probability/sum(df9$probability)
+
+sum(df9$probability * df9$xs)
+```

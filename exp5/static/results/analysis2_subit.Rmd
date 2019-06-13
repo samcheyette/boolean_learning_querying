@@ -1,0 +1,60 @@
+
+
+---
+output:
+  html_document: default
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=5, fig.height=5,fig.align = "center",cache=TRUE)
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+##libraries, globals
+
+library(ggplot2)
+library(reshape)
+library(grid)
+library(dplyr)
+library(gridExtra)
+library(lme4)
+library(summarytools)
+library(MuMIn)
+library(stargazer)
+
+paper_theme <- theme_light()
+
+
+```
+
+
+```{r}
+data <- read.csv('data.csv')
+
+data <- data %>%
+        mutate(corr = (n_shown == n_guess)*1) %>%
+        mutate(high_jitter = jitter > 20) 
+
+
+data$color <- factor(data$color)
+```
+
+
+```{r}
+
+ggplot(data=data, aes(x=loc_x, y=loc_y, color=color)) +
+      geom_point() +
+      facet_wrap(~trial_id) +
+      paper_theme + 
+      theme(  strip.text=element_blank(),
+          strip.background = element_blank())
+
+
+
+```
+
+ 

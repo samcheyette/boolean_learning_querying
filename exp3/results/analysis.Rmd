@@ -1,0 +1,623 @@
+---
+output:
+  html_document: default
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=5, fig.height=5,fig.align = "center",cache=TRUE)
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+##libraries, globals
+
+library(ggplot2)
+library(reshape)
+library(grid)
+library(dplyr)
+#library(gridExtra)
+library(lme4)
+#library(summarytools)
+#library(MuMIn)
+#library(stargazer)
+library(reghelper)
+
+paper_theme <- theme(
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(), 
+  panel.background = element_blank(),
+  axis.title.x = element_text(size=18),
+  axis.text.x=element_text(colour="black", 
+                           size = 14), 
+  axis.title.y = element_text(size = 18, vjust = 1),
+  axis.text.y  = element_text(size = 14),
+  axis.line.x = element_line(colour = "black"), 
+  axis.line.y = element_line(colour = "black"),
+  legend.text=element_text(size=16),
+  strip.text=element_blank(),
+          strip.background = element_blank())
+
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), ...)
+}
+
+
+
+```
+
+
+
+
+```{r}
+
+
+data <- read.csv("data.csv")
+
+data$id <- seq.int(1,nrow(data))
+
+data <- data %>%
+        group_by(uniqueid, trial_id, trial_phase) %>%
+        mutate(tot_guess = n() * (trial_phase == "guessing")) %>%
+          mutate(tot_query = n() * (trial_phase == "querying")) %>%
+        group_by(uniqueid, trial_id) %>%
+        mutate(only_guess = (sum(tot_query) == 0)*1) %>%
+          mutate(only_query = (sum(tot_guess) == 0)*1) %>%
+        mutate(tot_guess = max(tot_guess)) %>%
+        mutate(tot_query = max(tot_query)) %>%
+        mutate(n_correct = sum(correct_guess == 1)) %>%
+        mutate(p_correct = ((n_correct+0.1)/(tot_guess+0.1))) %>%
+  
+        mutate(trial_number=1*(objs_remain==0)) %>%
+
+        group_by(condition) %>%
+        mutate(mean_cplx = mean(cplx)) %>%
+        
+          group_by(uniqueid) %>%
+          mutate(trial_number=cumsum(trial_number))  %>%
+
+            mutate(mean_query = mean(n_query)) %>%
+         # filter(mean(only_guess) < 0.5)# %>%
+         #filter(mean(only_query) < 0.5) %>%
+         filter(!(only_guess)) %>%
+          mutate(mean_cplx_sofar = cummean(cplx)) %>%
+          mutate(mean_cplx_first = mean(cplx * (trial_number < 5))) %>%
+          mutate(mean_correct = mean(p_correct)) %>%
+            mutate(mean_correct_sofar = cummean(p_correct)) 
+
+
+
+
+data$average_cplx_bin <-  cut_number(data$mean_cplx_first,2)
+
+#data$average_cplx_bin <-  cut(data$mean_cplx,3)
+data$cplx_bin <- cut(data$cplx, 3)
+data$average_cplx_sofar <-  cut(data$mean_cplx_sofar,3)
+data$entropy_bin <-  cut(data$entropy,3)
+
+data$querying <- 1*(data$trial_phase == 'querying')
+
+
+data$info_gain = data$entropy-data$expected_ent
+data$score_gain = data$expected_score-data$score
+data$query_gain_or_loss = gsub("FALSE", "Loss", gsub("TRUE", "Gain", as.character(data$expected_score>data$score)))
+
+data$n_objs_selected = 16 - data$objs_remain
+
+data$info_gain_per_obj = data$info_gain / (data$objs_remain+1)
+
+
+
+
+ggplot(data=data)+
+        stat_summary(aes(x=pid, y=only_guess, group="G", color="G")) +
+        stat_summary(aes(x=pid, y=only_query, group="Q", color="Q"))
+
+data.querying <- data %>%
+              filter(trial_phase == "querying")
+
+data.guessing <- data %>%
+              filter(trial_phase =="guessing") 
+
+data.querying.last <- data.querying %>%
+                      group_by(uniqueid, trial_id) %>%
+                      top_n(n=1, wt=id)
+
+
+data.guessing.last <- data.guessing %>%
+                      group_by(uniqueid, trial_id) %>%
+                      top_n(n=1, wt=id) %>%
+
+                      ungroup %>% 
+                      group_by(uniqueid) %>%
+                      mutate(mean_cplx_sofar = cummean(cplx))
+
+
+data.last <- data %>%
+              group_by(uniqueid, trial_id) %>%
+              top_n(n=1, wt=id) %>%
+                mutate(mean_cplx_sofar = cummean(cplx)) %>%
+              ungroup %>%
+                  group_by(uniqueid) %>%
+                  mutate(mean_cplx_sofar = cummean(cplx))
+
+
+
+data.guessing$average_cplx_sofar <-  cut_number(data.guessing$mean_cplx_sofar,2)
+#data.guessing$average_cplx_bin <-  cut(data.guessing$condition,3)
+data.guessing$average_cplx_bin <-  cut(data.guessing$mean_cplx_first,3)
+
+data.guessing.last$average_cplx_sofar <-  cut(data.guessing.last$mean_cplx_sofar,3)
+
+data.guessing.last$average_cplx_bin <-  cut(data.guessing.last$mean_cplx,3)
+data.guessing.last$cplx_bin <- cut(data.guessing.last$cplx, 3)
+
+
+
+summary(lm(data=data.guessing.last, n_query ~ condition + trial_id))
+summary(lm(data=data.guessing.last, n_query ~ condition))
+summary(lm(data=data.guessing.last, n_query ~ condition + cplx + trial_id))
+
+summary(lm(data=data.guessing.last, n_query ~ trial_id+  cplx))
+
+summary(lm(data=data.guessing.last, n_query ~ trial_id))
+summary(glm(data=data.guessing, correct_guess ~ n_query + cplx , family=binomial()))
+
+summary(lm(data=data.guessing.last, I(money/cplx) ~ condition + trial_id))
+
+
+ggplot(data.guessing.last, aes(x=score_gain, y=money)) +
+        stat_summary_bin(binwidth=1) +
+        stat_smooth(method="lm") +
+      paper_theme
+
+ggplot(data.guessing.last, aes(x=score, y=money)) +
+        stat_summary_bin(binwidth=1) +
+        stat_smooth(method="lm") +
+      paper_theme
+
+
+
+beta(glm(data=data.guessing.last, money ~ n_query + cplx ))
+
+summary(glm(data=data.guessing, correct_guess ~ score + cplx, family=binomial()))
+summary(glm(data=data.guessing, correct_guess ~ n_query + score_gain + score, family=binomial()))
+
+```
+
+
+```{r}
+ggplot(data=data.guessing, aes(x=cplx, y=correct_guess)) +
+        stat_summary() +
+          paper_theme
+
+
+ggplot(data=data.guessing, aes(x=n_query, y=correct_guess, group=cut(cplx,2), color=cut(cplx,2))) +
+        binomial_smooth() +
+        paper_theme
+
+
+typeof(data.guessing.last$condition)
+
+ggplot(data=data.guessing.last, aes(x=trial_id, y=n_query,group=cut(condition,3), color=cut(condition,3))) +
+        stat_smooth(method="lm") +
+        paper_theme
+
+ggplot(data=data.guessing, aes(x=trial_id, y=n_query,group=cut(mean_cplx_sofar,2), color=cut(mean_cplx_sofar,2))) +
+        stat_smooth(method="lm") +
+        paper_theme
+
+
+
+ggplot(data=data.guessing, aes(x=trial_id, y=money, group=cut(condition,2), color=cut(condition,2))) +
+        stat_smooth(method="lm") +
+        paper_theme
+
+
+ggplot(data=data.guessing.last, aes(x=condition, y=money/cplx)) +
+        stat_smooth(method="lm") +
+        paper_theme
+
+
+ggplot(data=data.guessing.last, aes(x=condition, y=n_query/cplx)) +
+        stat_smooth(method="lm") +
+        paper_theme
+
+
+
+
+
+
+
+
+```
+
+```{r}
+ggplot(data=data.querying.last, aes(x=cplx, y=n_query)) +
+      stat_summary() +
+      paper_theme
+
+
+
+ggplot(data=data.guessing.last, aes(x=cplx, y=money)) +
+        stat_summary()
+
+
+
+ggplot(data=data.guessing.last, aes(x=condition, y=n_query)) +
+        stat_summary() +
+        paper_theme
+
+ggplot(data=data.guessing.last, aes(x=condition, y=n_query)) +
+        geom_jitter(alpha=0.5) +
+        stat_summary_bin(binwidth=0.9, fun.data="mean_se", color="red") +
+        stat_smooth(method="lm") +
+        paper_theme +
+        xlab("Average boolean complexity") +
+        ylab("Number of queries")
+
+
+
+
+
+
+ggplot(data=data.guessing.last, aes(x=n_query)) +
+        geom_histogram(bins=8) +
+        paper_theme +
+        facet_wrap(~average_cplx_bin, nrow=3)
+
+ggplot(data=data.guessing.last, aes(x=mean_cplx, y=money)) +
+        stat_summary() +
+        paper_theme
+
+ggplot(data=data.guessing.last, aes(x=n_query, y=money, group=mean_cplx,color=mean_cplx)) +
+        stat_summary_bin(bins=4) +
+        paper_theme
+
+
+ggplot(data=data.guessing.last, aes(x=mean_cplx_sofar, y=n_query)) +
+        stat_summary() +
+        paper_theme
+
+
+
+summary(lmer(data=data.guessing.last, n_query ~ cplx + condition + (1|uniqueid)))
+summary(lm(data=data.guessing.last, n_query  ~ condition + trial_id))
+summary(lm(data=data.guessing.last, n_query  ~ cplx))
+
+summary(lm(data=data.guessing.last, n_query  ~ poly(cplx, 2)))
+
+summary(lm(data=data.guessing.last, n_query ~ cplx))
+summary(lm(data=data.guessing.last, money ~ trial_id + condition +  cplx ))
+summary(glm(data=data.guessing, correct_guess ~ trial_id + cplx, family=binomial()))
+summary(glm(data=data.guessing, correct_guess ~ trial_id + condition, family=binomial()))
+
+
+```
+
+
+
+```{r, fig.width=8,fig.height=6}
+
+data.last$average_cplx_sofar <-  cut(data.last$mean_cplx_sofar,3)
+#data.last$average_cplx_bin <-  cut(data.last$condition,3)
+data.last$average_cplx_bin <-  cut(data.last$mean_cplx_first,3)
+
+data.last$cplx_bin <- cut_number(data.last$cplx, 3)
+
+
+
+ggplot(data=data.last, aes(x=trial_id, y=n_query, group=average_cplx_bin, color=average_cplx_bin)) +
+      #  geom_jitter(alpha=0.5) +
+        stat_summary_bin(binwidth=1.3, fun.data="mean_se", aes(group=average_cplx_bin, color=average_cplx_bin)) +
+        stat_smooth(method="lm") +
+        paper_theme +
+        xlab("Trial number") +
+        ylab("Number of queries") +
+        theme(legend.title=element_text(size=18), legend.position=c(0.2,0.85)) +
+        guides(color=guide_legend(title="Average cplx"))
+
+
+
+ggplot(data=data.last, aes(x=cplx, y=n_query)) +
+        stat_summary(fun.data="mean_se", geom="errorbar", color="black", width=0.5) +
+     # stat_smooth(method="lm") +
+     #  stat_summary(fun.y="mean", geom="line", alpha=0.8) +
+        stat_summary(fun.y="mean", geom="point",  color="black") +
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.14,0.9)) +
+       # guides(fill=guide_legend(title="Average cplx"), color=FALSE) +
+        paper_theme  + xlab("Boolean complexity") + ylab("Number of queries")
+
+
+ggplot(data=data.last, aes(x=cplx_bin, y=n_query, color=average_cplx_bin,group=average_cplx_bin)) +
+        stat_summary(fun.data="mean_se", geom="errorbar", position=position_dodge(width=0.9), color="black", width=0.5) +
+        stat_summary(fun.y="mean", geom="bar", alpha=0.8, aes( fill=average_cplx_bin,group=average_cplx_bin), position=position_dodge(width=0.9)) +
+        stat_summary(fun.y="mean", geom="point", position=position_dodge(width=0.9), color="black") +
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.14,0.9)) +
+        guides(fill=guide_legend(title="Average cplx"), color=FALSE) +
+        xlab("Item complexity (binned)") + ylab("Number of queries") +
+
+        paper_theme 
+
+ggplot(data=data.last, aes(x=cplx_bin, y=n_query, color=average_cplx_bin,group=average_cplx_bin)) +
+        stat_summary(fun.y="mean", geom="line", linetype="dotted", aes( color=average_cplx_bin,group=average_cplx_bin), size=1.5) +
+        stat_summary(fun.y="mean", geom="point", size=2.) +
+        stat_summary(fun.data="mean_se", geom="errorbar",  width=0.2) +
+
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.16,0.9)) +
+        xlab("Item complexity (binned)") + ylab("Number of queries") +
+        guides(color=guide_legend(title="Average cplx overall")) + 
+  
+        paper_theme 
+
+
+ggplot(data=data.last, aes(x=cplx_bin, y=n_query, color=average_cplx_sofar,group=average_cplx_sofar)) +
+        stat_summary(fun.y="mean", geom="line", linetype="dotted", aes( color=average_cplx_sofar,group=average_cplx_sofar), size=1.5) +
+        stat_summary(fun.y="mean", geom="point", size=2.) +
+        stat_summary(fun.data="mean_se", geom="errorbar",  width=0.2) +
+
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.16,0.9)) +
+        xlab("Item complexity (binned)") + ylab("Number of queries") +
+        guides(color=guide_legend(title="Average cplx overall")) + 
+  
+        paper_theme 
+
+
+
+ggplot(data=data.last, aes(x=average_cplx_bin, y=n_query)) +
+        stat_summary(fun.data="mean_se", geom="errorbar", position=position_dodge(width=0.9), color="black", width=0.5) +
+       # stat_summary(fun.y="mean", geom="bar", alpha=0.8, aes( fill=average_cplx_bin,group=average_cplx_bin), position=position_dodge(width=0.9)) +
+        stat_summary(fun.y="mean", geom="point", position=position_dodge(width=0.9), color="black") +
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.14,0.9)) +
+        #guides(fill=guide_legend(title="Average cplx"), color=FALSE) +
+        xlab("Average cplx (first 5)") + ylab("Number of queries (last five)") +
+
+        paper_theme 
+
+```
+
+
+```{r, fig.width=8,fig.height=6}
+
+
+
+ggplot(data=data.querying, aes(x=trial_id, y=entropy, group=cplx, color=cplx)) +
+      #stat_summary()
+    stat_smooth(method="lm")
+
+ggplot(data=data.guessing.last, aes(x=entropy, y=correct_guess)) +
+        geom_point() + 
+     # binomial_smooth()
+      stat_summary_bin(binwidth=0.25)
+
+
+
+ggplot(data=data, aes(x=entropy, y = querying)) +
+      stat_summary()
+
+
+ggplot(data=data, aes(x=entropy, y = querying)) +
+        binomial_smooth()
+
+
+
+
+ggplot(data=data, aes(x=cut_number(entropy,3), y = querying, group=average_cplx_bin, color=average_cplx_bin)) +
+        stat_summary(fun.y="mean",geom="line")+
+        stat_summary(fun.y="mean", geom="line", linetype="dotted", aes( color=average_cplx_bin,group=average_cplx_bin), size=1.5) +
+        stat_summary(fun.y="mean", geom="point", size=2.) +
+        stat_summary(fun.data="mean_se", geom="errorbar",  width=0.2) +
+
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.16,0.9)) +
+        xlab("Entropy (binned)") +  ylab("p(querying)") +
+        guides(color=guide_legend(title="Average cplx overall")) +
+          paper_theme 
+
+ggsave("figs/entropy_querying.pdf", width=8,height=5)
+
+ggplot(data=data, aes(x=cut(entropy,3), y = querying, group=average_cplx_sofar, color=average_cplx_sofar)) +
+        stat_summary(fun.y="mean",geom="line")+
+        stat_summary(fun.y="mean", geom="line", linetype="dotted", aes( color=average_cplx_sofar,group=average_cplx_sofar), size=1.5) +
+        stat_summary(fun.y="mean", geom="point", size=2.) +
+        stat_summary(fun.data="mean_se", geom="errorbar",  width=0.2) +
+
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.16,0.9)) +
+        xlab("Entropy (binned)") + ylab("p(querying)") +
+        guides(color=guide_legend(title="Average previous cplx")) +
+          paper_theme 
+
+
+ggplot(data=data, aes(x=cplx, y = querying, group=average_cplx_bin, color=average_cplx_bin)) +
+  
+                binomial_smooth() +
+
+        stat_summary_bin(binwidth=4)
+
+summary(lm(data=data.last, entropy ~ cplx+n_query))
+
+summary(glm(data=data, querying ~ entropy + mean_cplx , family=binomial()))
+
+
+r.1 <- glm(querying ~ entropy + mean_cplx + cplx , family=binomial(), data=data)
+
+r.2 <- glm(querying ~ entropy + mean_cplx + trial_id + cplx , family=binomial(), data=data) 
+r.3 <- glm(querying ~ entropy + mean_cplx + cplx + mean_correct , family=binomial(), data=data) 
+r.4 <- glm(querying ~ entropy + mean_cplx + cplx + trial_id + mean_correct_sofar , family=binomial(), data=data) 
+
+
+beta(r.1)
+beta(r.2)
+beta(r.3)
+beta(r.4)
+
+
+ggplot(data=data.querying, aes(x=16-objs_remain, y=entropy, group=pid)) +
+        geom_line() +
+   #   stat_summary(color="red", fun.y="mean",geom="line") +
+      facet_wrap(~categories)
+
+ggsave("figs/entropy_query.pdf",width=10,height=7)
+
+
+ggplot(data=data.guessing.last, aes(x=cut(n_query,3), y=correct_guess, color=cut_number(entropy,2),group=cut_number(entropy,2))) +
+
+
+      stat_summary(fun.y="mean",geom="line", size=1.5, linetype="dotted")  +
+      stat_summary(fun.y="mean",geom="point")  +
+      stat_summary(fun.data="mean_se",geom="errorbar", width=0.5)  +
+
+
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.86,0.9)) +
+        ylab("p(correct)") +  xlab("Entropy (binned)") +
+      #  guides(color=guide_legend(title="Entropy")) +
+          paper_theme 
+
+ggplot(data=data, aes(x=16-objs_remain, y=querying, color=cplx_bin, group=cplx_bin)) +
+
+
+      stat_summary(fun.y="mean",geom="line", size=1.5, linetype="dotted")  +
+      stat_summary(fun.y="mean",geom="point")  +
+      stat_summary(fun.data="mean_se",geom="errorbar", width=0.5)  +
+
+
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.86,0.9)) +
+        xlab("Objects queried/guessed") +  ylab("p(querying)") +
+        guides(color=guide_legend(title="Boolean complexity")) +
+          paper_theme 
+
+ggsave("figs/cplx_query.pdf",width=8,height=5)
+
+ggplot(data=data, aes(x=16-objs_remain, y=querying, color=average_cplx_bin, group=average_cplx_bin)) +
+
+      stat_summary(fun.y="mean",geom="line", size=1.5, linetype="dotted")  +
+      stat_summary(fun.y="mean",geom="point")  +
+      stat_summary(fun.data="mean_se",geom="errorbar", width=0.5)  +
+
+
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=10), legend.position=c(0.86,0.9)) +
+        xlab("Objects queried/guessed") +  ylab("p(querying)") +
+        guides(color=guide_legend(title="Average Cplx")) +
+          paper_theme 
+
+ggsave("figs/av_cplx_query.pdf",width=8,height=5)
+
+data <- data %>%
+        group_by(categories) %>%
+        mutate(p_query = mean(querying)) 
+  
+
+ggplot(data=data, aes(x=cut_number(entropy,6), y=querying, color=average_cplx_bin, group=average_cplx_bin)) +
+      stat_summary(fun.y="mean",geom="line")  +
+
+      stat_summary(fun.y="mean",geom="point")  +
+      stat_summary(fun.data="mean_se",geom="errorbar", width=0.5)  +
+
+        xlab("Entropy") +  ylab("p(querying)") +
+        guides(color=guide_legend(title="Cplx")) +
+          paper_theme + theme(axis.text.x=element_text(angle=90)) #+
+       # scale_color_gradient2(low="blue",mid ="red", high="yellow", midpoint=9)
+
+
+ggsave("figs/categories_querying.pdf", width=12,height=6)
+
+
+ggplot(data=data, aes(x=cut_number(entropy,3), y=querying, color=average_cplx_bin, group=average_cplx_bin)) +
+      stat_summary(fun.y="mean",geom="line")  +
+
+      stat_summary(fun.y="mean",geom="point")  +
+      stat_summary(fun.data="mean_se",geom="errorbar", width=0.5)  +
+
+        xlab("Entropy") +  ylab("p(querying)") +
+        guides(color=guide_legend(title="Cplx")) +
+          paper_theme + theme(axis.text.x=element_text(angle=90)) #+
+       # scale_color_gradient2(low="blue",mid ="red", high="yellow", midpoint=9)
+
+
+
+ggplot(data=data, aes(x=score_gain, y=querying, group=average_cplx_bin, color=average_cplx_bin)) +
+      #geom_line()
+        binomial_smooth() +
+        paper_theme +
+          xlab("Expected score gain from query") +  ylab("p(querying)") +
+        guides(color=guide_legend(title="Average Cplx"))  +
+        theme(legend.title=element_text(size=16), legend.text=element_text(size=13), legend.position=c(0.16,0.9)) 
+
+ggplot(data=data.last,aes(x=average_cplx_bin, y=score_gain, group=1))+
+            ylab("Score gain from query") +  xlab("Average complexity") +
+      stat_summary(fun.y="mean", geom="point", size=3) +
+      stat_summary(fun.data="mean_se", geom="errorbar", width=0.2) +
+
+      stat_summary(fun.y="mean", geom="line") +
+      geom_hline(aes(yintercept=0)) +
+      paper_theme
+
+
+ggplot(data=data.last,aes(x=total_money, y=score_gain)) +
+            ylab("Score gain from query") +  xlab("Average complexity") +
+      stat_summary_bin(binwidth=0.025) + stat_smooth(method="lm") +
+      geom_hline(aes(yintercept=0)) +
+      paper_theme
+
+
+
+table(data.guessing.last$condition)
+
+
+```
+
+
+
+```{r}
+
+
+
+ggplot(data=data, aes(x=entropy, y=info_gain)) +
+          geom_jitter(width=0.25,height=0.1, alpha=0.8) +
+        stat_smooth(method="lm", formula=y~poly(x,3)) +
+        ylab("Expetcted information gain") +  xlab("Entropy") +
+        geom_abline(color="red", linetype="dotted", size=2.5) +
+          paper_theme + theme(axis.text.x=element_text(angle=90)) #+
+
+
+
+ggplot(data=data, aes(x=cut_number(info_gain,3), y=querying, group=average_cplx_bin,color=average_cplx_bin)) +
+         stat_summary() +
+        xlab("Expetcted information gain") +  ylab("P(querying)") +
+          paper_theme + theme(axis.text.x=element_text(angle=90)) #+
+
+
+
+ggplot(data=data, aes(x=n_objs_selected, y=I(score/tot_query))) +
+      stat_summary()
+
+
+ggplot(data=data, aes(x=info_gain, y=querying)) +
+      stat_summary_bin(bins=2)
+
+beta(glm(data=data, querying~ entropy, family=binomial()))
+
+beta(glm(data=data, querying ~ entropy + info_gain + score_gain + n_query, family=binomial()))
+beta(glm(data=data, querying ~ entropy * info_gain + n_objs_selected, family=binomial()))
+
+
+beta(lm(data=data, info_gain ~ score_gain))
+
+
+
+
+ggplot(data=data.guessing,aes(x=average_cplx_bin, y=correct_guess)) +
+            ylab("Accuracy (last 5)") +  xlab("Average complexity (first 5)") +
+      stat_summary(fun.y="mean", geom="point", size=3) +
+      stat_summary(fun.data="mean_se", geom="errorbar", width=0.2) +
+
+      stat_summary(fun.y="mean", geom="line") +
+    #  geom_hline(aes(yintercept=0)) +
+      paper_theme
+
+```
+
+
+

@@ -1,0 +1,67 @@
+
+---
+output:
+  html_document: default
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=5, fig.height=5,fig.align = "center",cache=TRUE)
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+##libraries, globals
+
+library(ggplot2)
+library(reshape)
+library(grid)
+library(dplyr)
+#library(gridExtra)
+library(lme4)
+library(stringr)
+#library(summarytools)
+#library(MuMIn)
+#library(stargazer)
+
+paper_theme <- theme_light()
+
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), ...)
+}
+
+
+
+```
+
+
+```{r}
+
+data <- read.csv("out.csv")
+
+
+
+
+```
+
+
+
+```{r}
+ggplot(data=data, aes(x=cplx,y=rating))+
+      #geom_jitter(alpha=0.25) +
+      stat_smooth() +
+
+      stat_summary(color="red") +
+      paper_theme
+
+ggplot(data=data, aes(x=cplx,y=trialsSeen))+
+      #geom_jitter(alpha=0.25) +
+      stat_smooth() +
+      stat_summary(color="red") +
+      paper_theme
+
+
+```
